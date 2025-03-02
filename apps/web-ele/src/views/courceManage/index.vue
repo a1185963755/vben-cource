@@ -1,50 +1,28 @@
 <script lang="ts" setup>
 import type { VxeGridProps } from '#/adapter/vxe-table';
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
-import { ElButton, ElMessageBox } from 'element-plus';
+import { getCourseApi, type Course } from '#/api';
+import { dayjs, ElButton, ElMessage, ElMessageBox, ElTag } from 'element-plus';
+import { onMounted, ref } from 'vue';
+import { useVbenModal } from '@vben/common-ui';
+import { useVbenForm } from '#/adapter/form';
+import { useAccess } from '@vben/access';
+const { hasAccessByRoles } = useAccess();
 
-interface CourseRow {
-  id: string;
-  name: string;
-  status: string;
-  createTime: string;
-  remark: string;
-}
+const courseData = ref<Course[]>([]);
+const total = ref(0);
 
-// Mock数据
-const mockCourses: CourseRow[] = [
-  {
-    id: '1',
-    name: '前端开发基础',
-    status: '已启用',
-    createTime: '2024-03-18 10:41:21',
-    remark: 'HTML、CSS和JavaScript基础课程',
-  },
-  {
-    id: '2',
-    name: 'Vue.js进阶实战',
-    status: '已启用',
-    createTime: '2024-03-19 14:30:00',
-    remark: 'Vue3组件开发与状态管理',
-  },
-  {
-    id: '3',
-    name: 'React开发实践',
-    status: '已禁用',
-    createTime: '2024-03-20 09:15:30',
-    remark: 'React Hooks与Redux应用开发',
-  },
-  {
-    id: '4',
-    name: 'Node.js后端开发',
-    status: '已启用',
-    createTime: '2024-03-21 16:20:45',
-    remark: 'Express框架与数据库集成',
-  },
-];
+onMounted(async () => {
+  const res = await getCourseApi({
+    page: 1,
+    pageSize: 10,
+  });
+  courseData.value = res.items;
+  total.value = res.total;
+});
 
 // 表格配置
-const gridOptions: VxeGridProps<CourseRow> = {
+const gridOptions: VxeGridProps<Course> = {
   columns: [
     { type: 'seq', title: '序号', width: 60 },
     { field: 'name', title: '课程名称', minWidth: 120 },
@@ -54,8 +32,16 @@ const gridOptions: VxeGridProps<CourseRow> = {
       width: 100,
       slots: { default: 'status' },
     },
-    { field: 'createTime', title: '创建时间', width: 180 },
-    { field: 'remark', title: '备注', minWidth: 200 },
+    {
+      field: 'createdAt',
+      title: '创建时间',
+      width: 180,
+      formatter: ({ cellValue }) => {
+        return dayjs(cellValue).format('YYYY-MM-DD HH:mm:ss');
+      },
+    }, // 修改字段名称为 createdAt
+    { field: 'description', title: '课程描述', minWidth: 200 }, // 新增 description 列
+    { field: 'instructor', title: '讲师', minWidth: 120 }, // 新增 instructor 列
     {
       title: '操作',
       width: 200,
@@ -74,18 +60,15 @@ const gridOptions: VxeGridProps<CourseRow> = {
   },
   proxyConfig: {
     ajax: {
-      // 模拟远程加载数据
+      // 调整为从API获取数据
       query: async ({ page }) => {
-        // 模拟延迟
-        await new Promise((resolve) => setTimeout(resolve, 300));
-
-        const startIndex = (page.currentPage - 1) * page.pageSize;
-        const endIndex = startIndex + page.pageSize;
-        const pageData = mockCourses.slice(startIndex, endIndex);
-
+        const res = await getCourseApi({
+          page: page.currentPage,
+          pageSize: page.pageSize,
+        });
         return {
-          items: pageData,
-          total: mockCourses.length,
+          items: res.items,
+          total: res.total,
         };
       },
     },
@@ -96,38 +79,118 @@ const [Grid, gridApi] = useVbenVxeGrid({
   gridOptions,
 });
 
-// 新增课程
-const handleAdd = () => {
-  // 实现新增逻辑
-  const newCourse: CourseRow = {
-    id: String(mockCourses.length + 1),
-    name: '新课程',
-    status: '已启用',
-    createTime: new Date().toLocaleString(),
-    remark: '',
-  };
-  mockCourses.unshift(newCourse);
-  gridApi.reload();
+const [Form, FormApi] = useVbenForm({
+  commonConfig: {
+    componentProps: {
+      class: 'w-full',
+    },
+  },
+  handleSubmit: onSubmit,
+  layout: 'horizontal',
+  schema: [
+    {
+      component: 'Input',
+      componentProps: {
+        placeholder: '请输入课程名称',
+      },
+      fieldName: 'name',
+      label: '课程名称',
+      rules: 'required',
+    },
+    {
+      component: 'Select',
+      componentProps: {
+        allowClear: true,
+        options: [
+          { label: '进行中', value: '进行中' },
+          { label: '已结束', value: '已结束' },
+        ],
+        placeholder: '请选择状态',
+      },
+      fieldName: 'status',
+      label: '状态',
+      rules: 'selectRequired',
+    },
+    {
+      component: 'DatePicker',
+      componentProps: {
+        placeholder: '请选择创建时间',
+      },
+      fieldName: 'createdAt',
+      label: '创建时间',
+      rules: 'required',
+    },
+    {
+      component: 'Input',
+      componentProps: {
+        placeholder: '请输入课程描述',
+      },
+      fieldName: 'description',
+      label: '课程描述',
+      rules: 'required',
+    },
+    {
+      component: 'Input',
+      componentProps: {
+        placeholder: '请输入讲师名称',
+      },
+      fieldName: 'instructor',
+      label: '讲师',
+      rules: 'required',
+    },
+  ],
+  wrapperClass: 'grid-cols-1',
+  resetButtonOptions: {
+    show: false,
+  },
+  submitButtonOptions: {
+    show: false,
+  },
+});
+const [Modal, modalApi] = useVbenModal({
+  title: '新增课程',
+  draggable: true,
+  onConfirm() {
+    FormApi.validateAndSubmitForm();
+  },
+});
+
+const handleEdit = (row: Course) => {
+  FormApi.setValues(row);
+  modalApi.setState({ title: '编辑课程' }).open();
 };
 
-// 编辑课程
-const handleEdit = (row: CourseRow) => {
-  // 实现编辑逻辑
-  console.log('编辑课程:', row);
+function onSubmit() {
+  ElMessage.success('编辑课程成功');
+  modalApi.close();
+  gridApi.reload();
+}
+
+// 新增课程
+const handleAdd = () => {
+  modalApi.open();
 };
 
 // 删除课程
-const handleDelete = (row: CourseRow) => {
+const handleDelete = () => {
   ElMessageBox.confirm('确定要删除该课程吗?', '提示', {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
     type: 'warning',
   }).then(() => {
-    const index = mockCourses.findIndex((item) => item.id === row.id);
-    if (index > -1) {
-      mockCourses.splice(index, 1);
-      gridApi.reload();
-    }
+    ElMessage.success('删除课程成功');
+    gridApi.reload();
+  });
+};
+
+//申请课程
+const handleApply = (row: Course) => {
+  ElMessageBox.confirm(`确定要申请 ${row.name} 吗?`, '提示', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+  }).then(() => {
+    ElMessage.success('申请成功');
+    gridApi.reload();
   });
 };
 </script>
@@ -137,23 +200,48 @@ const handleDelete = (row: CourseRow) => {
     <Grid>
       <!-- 工具栏 -->
       <template #toolbar-tools>
-        <el-button type="primary" @click="handleAdd">新增课程</el-button>
+        <el-button
+          type="primary"
+          @click="handleAdd"
+          v-if="hasAccessByRoles(['super', 'admin'])"
+          >新增课程</el-button
+        >
       </template>
 
       <!-- 状态列 -->
       <template #status="{ row }">
-        <vxe-tag :status="row.status === '已禁用' ? 'danger' : 'success'">
+        <el-tag :type="row.status === '已结束' ? 'danger' : 'success'">
           {{ row.status }}
-        </vxe-tag>
+        </el-tag>
       </template>
 
       <!-- 操作列 -->
       <template #action="{ row }">
-        <el-button link type="primary" @click="handleEdit(row)">修改</el-button>
-        <el-button link type="danger" @click="handleDelete(row)"
+        <el-button
+          link
+          type="primary"
+          @click="handleApply(row)"
+          v-if="hasAccessByRoles(['user'])"
+          >申请</el-button
+        >
+        <el-button
+          link
+          type="primary"
+          @click="handleEdit(row)"
+          v-if="hasAccessByRoles(['super', 'admin'])"
+          >修改</el-button
+        >
+        <el-button
+          link
+          type="danger"
+          @click="handleDelete"
+          v-if="hasAccessByRoles(['super', 'admin'])"
           >删除</el-button
         >
       </template>
     </Grid>
+    <Modal>
+      <Form></Form>
+    </Modal>
   </div>
 </template>
