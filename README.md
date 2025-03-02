@@ -3,7 +3,7 @@
 - 安装依赖
 
 ```bash
-cd vben-course
+cd vben-cource
 
 pnpm install
 ```
