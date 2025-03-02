@@ -3,7 +3,7 @@
 - 安装依赖
 
 ```bash
-cd vue-vben-admin
+cd vben-course
 
 pnpm install
 ```
